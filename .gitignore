@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+.env
+Traffic_Report.pdf
