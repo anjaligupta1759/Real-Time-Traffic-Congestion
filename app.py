@@ -440,7 +440,6 @@ elif mode == "Multi City Comparison":
                 mime="application/pdf"
             )
 
-
 # =========================================================
 # ================= INDIA HEATMAP =========================
 # =========================================================
@@ -451,60 +450,64 @@ elif mode == "India Heatmap":
 
     city_input = st.text_input("Enter Cities for Heatmap (comma separated)")
 
-    # -----------------------------------------------------
-    # Initialize Variables IMPORTANT..!!
-    # -----------------------------------------------------
     heatmap_data = []
     table_data = []
-
 
     if city_input:
 
         from folium.plugins import HeatMap
-        import pandas as pd
 
-        city_list = [city.strip() for city in city_input.split(",")]
+        # Clean city names
+        city_list = [city.strip().title() for city in city_input.split(",")]
 
         for city in city_list:
 
             lat_c, lon_c, address_c = search_location(city)
 
-            # Check location found..!!
-            if lat_c and lon_c:
+            # If city not found
+            if lat_c is None or lon_c is None:
+                st.warning(f"⚠ City not found: {city}")
+                continue
 
-                current_speed_c, free_speed_c = fetch_traffic(lat_c, lon_c)
+            current_speed_c, free_speed_c = fetch_traffic(lat_c, lon_c)
 
-                # Check traffic data found..!!
-                if current_speed_c and free_speed_c:
+            # If traffic API failed
+            if current_speed_c is None or free_speed_c is None:
+                st.warning(f"⚠ Traffic data unavailable for {city}")
+                continue
 
-                    prediction_c, percent_c, _ = predict_congestion(
-                        current_speed_c, free_speed_c
-                    )
+            prediction_c, percent_c, _ = predict_congestion(
+                current_speed_c, free_speed_c
+            )
 
-                    # Add Heatmap data..!!
-                    heatmap_data.append([lat_c, lon_c, percent_c])
+            # Heatmap data
+            heatmap_data.append([lat_c, lon_c, percent_c])
 
-                    # Add Table data..!!
-                    table_data.append({
-                        "City": city.title(),
-                        "Risk %": percent_c,
-                        "Congestion Level": prediction_c
-                    })
+            # Table data with lat/lon stored
+            table_data.append({
+                "City": city,
+                "Risk %": percent_c,
+                "Congestion Level": prediction_c,
+                "Lat": lat_c,
+                "Lon": lon_c
+            })
+
 
     # -----------------------------------------------------
-    # 🗺 If Valid Data Found → Show Heatmap
+    # Show Heatmap if Data Found
     # -----------------------------------------------------
+
     if len(heatmap_data) > 0:
 
         import folium
         from streamlit_folium import st_folium
-        import plotly.express as px
         import pandas as pd
+        import plotly.express as px
 
-        # Create India Map..!!
+        # India Map
         m = folium.Map(location=[22.5, 78.9], zoom_start=5)
 
-        # Heatmap Layer..!!
+        # Heatmap Layer
         HeatMap(
             heatmap_data,
             radius=40,
@@ -513,15 +516,14 @@ elif mode == "India Heatmap":
             max_zoom=8
         ).add_to(m)
 
-
-        # -------------------------------------------------
-        #  Interactive Circle Markers with Popup
-        # -------------------------------------------------
+        # -----------------------------
+        # Circle Markers
+        # -----------------------------
 
         for row in table_data:
 
-            # Get lat/lon again
-            lat_c, lon_c, _ = search_location(row["City"])
+            lat_c = row["Lat"]
+            lon_c = row["Lon"]
 
             if row["Risk %"] >= 70:
                 marker_color = "red"
@@ -533,7 +535,7 @@ elif mode == "India Heatmap":
             popup_html = f"""
             <b>City:</b> {row['City']} <br>
             <b>Congestion:</b> {row['Congestion Level']} <br>
-            <b>Risk %:</b> {row['Risk %']}
+            <b>Risk %:</b> {row['Risk %']}%
             """
 
             folium.CircleMarker(
@@ -548,12 +550,12 @@ elif mode == "India Heatmap":
 
         st_folium(m, height=600, use_container_width=True)
 
-
         # -------------------------------------------------
-        # 📊 ANALYTICS SECTION
+        # ANALYTICS
         # -------------------------------------------------
 
         df_heat = pd.DataFrame(table_data)
+
         df_heat = df_heat.sort_values(
             by="Risk %", ascending=False
         ).reset_index(drop=True)
@@ -562,27 +564,28 @@ elif mode == "India Heatmap":
 
         highest_city = df_heat.iloc[0]["City"]
         highest_risk = df_heat.iloc[0]["Risk %"]
+
         safest_city = df_heat.iloc[-1]["City"]
         safest_risk = df_heat.iloc[-1]["Risk %"]
 
         st.error(f"🚨 Highest Risk City: {highest_city} ({highest_risk}%)")
         st.success(f"✅ Safest City: {safest_city} ({safest_risk}%)")
 
-        # -------------------------------------------------
-        # 🥇 Top 3 Cities
-        # -------------------------------------------------
+        # Top 3 Cities
         st.markdown("### 🥇 Top 3 High Risk Cities")
 
         medals = ["🥇", "🥈", "🥉"]
 
         for i in range(min(3, len(df_heat))):
+
             st.write(
                 f"{medals[i]} {df_heat.loc[i,'City']} — {df_heat.loc[i,'Risk %']}%"
             )
 
-        # -------------------------------------------------
-        # 📊 Risk Summary Metrics
-        # -------------------------------------------------
+        # -----------------------------
+        # Risk Metrics
+        # -----------------------------
+
         st.markdown("### 📊 Risk Summary")
 
         col1, col2, col3 = st.columns(3)
@@ -602,9 +605,10 @@ elif mode == "India Heatmap":
             len(df_heat[df_heat["Risk %"] < 40])
         )
 
-        # -------------------------------------------------
-        # 📊 Bar Chart
-        # -------------------------------------------------
+        # -----------------------------
+        # Chart
+        # -----------------------------
+
         st.markdown("## 📊 Heatmap Risk Comparison Chart")
 
         fig = px.bar(
@@ -618,26 +622,20 @@ elif mode == "India Heatmap":
 
         st.plotly_chart(fig, use_container_width=True)
 
-        # -------------------------------------------------
-        # 🗺 Legend
-        # -------------------------------------------------
-        st.markdown("""
-        ### 🗺 Heatmap Legend Information:
+        # -----------------------------
+        # Table
+        # -----------------------------
 
-        - 🟢 0–40 → Low Risk  
-        - 🟡 40–70 → Medium Risk  
-        - 🔴 70–100 → High Risk  
-        """)
-
-        # -------------------------------------------------
-        # 📋 Risk Table
-        # -------------------------------------------------
         st.markdown("## 📊 City Risk Table")
-        st.dataframe(df_heat, use_container_width=True)
 
-        # --------------------------
-        # DOWNLOAD REPORT BUTTON
-        # --------------------------    
+        st.dataframe(
+            df_heat[["City", "Risk %", "Congestion Level"]],
+            use_container_width=True
+        )
+
+        # -----------------------------
+        # PDF Download
+        # -----------------------------
 
         st.markdown("## 📥 Download Traffic Report (PDF)")
 
@@ -649,11 +647,8 @@ elif mode == "India Heatmap":
             file_name="Heatmap_Report.pdf",
             mime="application/pdf"
         )
-    
-    # -------------------------------------------------
-    # ❌ Show Error Only If City Entered But No Data Found
-    # -------------------------------------------------
+
     elif city_input:
+
         st.error("❌ No valid traffic data found for the entered cities.")
-    
 
